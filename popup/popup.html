@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Investment Portfolio Assistant</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>投资组合助手</h1>
+        </div>
+        
+        <div class="content">
+            <!-- 日期选择区域 -->
+            <div class="date-section">
+                <div class="input-group">
+                    <label for="startDate">起始日期:</label>
+                    <input type="month" id="startDate" name="startDate">
+                </div>
+                <div class="input-group">
+                    <label for="endDate">结束日期:</label>
+                    <input type="month" id="endDate" name="endDate">
+                </div>
+            </div>
+
+            <!-- 股票选择区域 -->
+            <div class="stock-section">
+                <div class="input-group">
+                    <label for="stockSelect">选择股票:</label>
+                    <select id="stockSelect" name="stockSelect"></select>
+                </div>
+                <div class="input-group">
+                    <label for="baseInvestment">基础投资金额($):</label>
+                    <input type="number" id="baseInvestment" name="baseInvestment">
+                </div>
+            </div>
+
+            <!-- 资产组合设置 -->
+            <div class="portfolio-section">
+                <button id="setPortfolio">设置资产组合</button>
+                <div id="portfolioSummary"></div>
+            </div>
+
+            <!-- 再平衡设置 -->
+            <div class="rebalance-section">
+                <div class="rebalance-header">
+                    <label>
+                        <input type="checkbox" id="enableRebalance">
+                        启用再平衡
+                    </label>
+                </div>
+                <div class="rebalance-options" id="rebalanceOptions">
+                    <div class="input-group">
+                        <label>再平衡周期:</label>
+                        <div class="radio-group">
+                            <label><input type="radio" name="period" value="MONTHLY">月度</label>
+                            <label><input type="radio" name="period" value="QUARTERLY">季度</label>
+                            <label><input type="radio" name="period" value="SEMIANNUAL">半年</label>
+                            <label><input type="radio" name="period" value="ANNUAL">年度</label>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label for="threshold">再平衡阈值(%):</label>
+                        <input type="number" id="threshold" min="0" max="100">
+                    </div>
+                    <div class="input-group">
+                        <label for="minTrade">最小交易金额($):</label>
+                        <input type="number" id="minTrade" min="0">
+                    </div>
+                </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="action-buttons">
+                <button id="updateChart">更新图表</button>
+                <button id="estimateToday">当天定投估值</button>
+                <button id="viewHistory">查看历史记录</button>
+            </div>
+        </div>
+
+        <!-- 图表展示区域 -->
+        <div class="chart-container">
+            <canvas id="investmentChart"></canvas>
+        </div>
+
+        <!-- 统计信息展示 -->
+        <div class="statistics" id="statisticsPanel">
+        </div>
+    </div>
+
+    <!-- 引入脚本 -->
+    <script src="../lib/chart.js"></script>
+    <script src="../lib/yahoo-finance.js"></script>
+    <script src="../lib/data-processing.js"></script>
+    <script src="popup.js"></script>
+</body>
+</html>

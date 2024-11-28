@@ -1,0 +1,31 @@
+{
+    "manifest_version": 3,
+    "name": "Investment Portfolio Assistant",
+    "version": "1.0",
+    "description": "A tool for investment portfolio management and analysis",
+    "permissions": [
+      "storage",
+      "alarms",
+      "notifications"
+    ],
+    "host_permissions": [
+      "https://query1.finance.yahoo.com/*"
+    ],
+    "action": {
+      "default_popup": "popup/popup.html",
+      "default_icon": {
+        "16": "assets/icons/icon16.png",
+        "48": "assets/icons/icon48.png",
+        "128": "assets/icons/icon128.png"
+      }
+    },
+    "background": {
+      "service_worker": "background/background.js"
+    },
+    "icons": {
+      "16": "assets/icons/icon16.png",
+      "48": "assets/icons/icon48.png",
+      "128": "assets/icons/icon128.png"
+    },
+    "default_locale": "zh"
+  }
