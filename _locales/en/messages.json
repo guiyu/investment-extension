@@ -1,0 +1,74 @@
+{
+    "extName": {
+        "message": "Investment Portfolio Assistant",
+        "description": "The extension name"
+    },
+    "extDescription": {
+        "message": "A powerful tool for investment portfolio management and analysis",
+        "description": "The extension description"
+    },
+    "btnAnalyze": {
+        "message": "Analyze",
+        "description": "Analyze button text"
+    },
+    "btnAddToPortfolio": {
+        "message": "Add to Portfolio",
+        "description": "Add to portfolio button text"
+    },
+    "btnUpdateChart": {
+        "message": "Update Chart",
+        "description": "Update chart button text"
+    },
+    "btnEstimateToday": {
+        "message": "Today's Estimate",
+        "description": "Estimate today button text"
+    },
+    "btnRebalance": {
+        "message": "Rebalance",
+        "description": "Rebalance button text"
+    },
+    "labelStartDate": {
+        "message": "Start Date:",
+        "description": "Start date label"
+    },
+    "labelEndDate": {
+        "message": "End Date:",
+        "description": "End date label"
+    },
+    "labelBaseInvestment": {
+        "message": "Base Investment ($):",
+        "description": "Base investment label"
+    },
+    "labelRebalanceThreshold": {
+        "message": "Rebalance Threshold (%):",
+        "description": "Rebalance threshold label"
+    },
+    "titlePortfolioValue": {
+        "message": "Portfolio Value",
+        "description": "Portfolio value chart title"
+    },
+    "titleReturns": {
+        "message": "Investment Returns",
+        "description": "Returns chart title"
+    },
+    "titleAllocation": {
+        "message": "Asset Allocation",
+        "description": "Asset allocation chart title"
+    },
+    "msgSuccess": {
+        "message": "Operation successful",
+        "description": "Success message"
+    },
+    "msgError": {
+        "message": "An error occurred",
+        "description": "Error message"
+    },
+    "msgNoData": {
+        "message": "No data available",
+        "description": "No data message"
+    },
+    "msgConfirmRebalance": {
+        "message": "Are you sure you want to rebalance your portfolio?",
+        "description": "Rebalance confirmation message"
+    }
+}

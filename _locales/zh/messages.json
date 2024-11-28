@@ -1,0 +1,74 @@
+{
+    "extName": {
+        "message": "投资组合助手",
+        "description": "扩展名称"
+    },
+    "extDescription": {
+        "message": "强大的投资组合管理与分析工具",
+        "description": "扩展描述"
+    },
+    "btnAnalyze": {
+        "message": "分析",
+        "description": "分析按钮文本"
+    },
+    "btnAddToPortfolio": {
+        "message": "添加到投资组合",
+        "description": "添加到投资组合按钮文本"
+    },
+    "btnUpdateChart": {
+        "message": "更新图表",
+        "description": "更新图表按钮文本"
+    },
+    "btnEstimateToday": {
+        "message": "今日估值",
+        "description": "今日估值按钮文本"
+    },
+    "btnRebalance": {
+        "message": "再平衡",
+        "description": "再平衡按钮文本"
+    },
+    "labelStartDate": {
+        "message": "起始日期：",
+        "description": "起始日期标签"
+    },
+    "labelEndDate": {
+        "message": "结束日期：",
+        "description": "结束日期标签"
+    },
+    "labelBaseInvestment": {
+        "message": "基础投资金额（$）：",
+        "description": "基础投资金额标签"
+    },
+    "labelRebalanceThreshold": {
+        "message": "再平衡阈值（%）：",
+        "description": "再平衡阈值标签"
+    },
+    "titlePortfolioValue": {
+        "message": "投资组合价值",
+        "description": "投资组合价值图表标题"
+    },
+    "titleReturns": {
+        "message": "投资收益",
+        "description": "收益图表标题"
+    },
+    "titleAllocation": {
+        "message": "资产配置",
+        "description": "资产配置图表标题"
+    },
+    "msgSuccess": {
+        "message": "操作成功",
+        "description": "成功消息"
+    },
+    "msgError": {
+        "message": "操作失败",
+        "description": "错误消息"
+    },
+    "msgNoData": {
+        "message": "暂无数据",
+        "description": "无数据消息"
+    },
+    "msgConfirmRebalance": {
+        "message": "确定要执行投资组合再平衡吗？",
+        "description": "再平衡确认消息"
+    }
+}
