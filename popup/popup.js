@@ -10,6 +10,153 @@ class PopupUI {
         this.initializeElements();
         this.setupEventListeners();
         this.loadInitialConfig();
+        // 初始化股票选择器
+        this.initializeStockSelect();
+        // 绑定事件监听
+        this.bindStockSelectEvents();
+    }
+
+    initializeStockSelect() {
+        // 获取股票选择下拉菜单元素
+        this.stockSelect = document.getElementById('stockSelect');
+        
+        // 确保元素存在
+        if (!this.stockSelect) {
+            console.error('Stock select element not found');
+            return;
+        }
+
+        // 从配置中加载股票列表
+        chrome.storage.sync.get('config', (result) => {
+            if (result.config && Array.isArray(result.config.tickers)) {
+                // 清空现有选项
+                this.stockSelect.innerHTML = '';
+                
+                // 添加默认选项
+                const defaultOption = document.createElement('option');
+                defaultOption.value = '';
+                defaultOption.textContent = '请选择股票';
+                this.stockSelect.appendChild(defaultOption);
+                
+                // 添加股票选项
+                result.config.tickers.forEach(ticker => {
+                    const option = document.createElement('option');
+                    option.value = ticker;
+                    option.textContent = ticker;
+                    this.stockSelect.appendChild(option);
+                });
+
+                // 设置默认选中第一个有效选项
+                if (result.config.tickers.length > 0) {
+                    this.stockSelect.value = result.config.tickers[0];
+                }
+            } else {
+                console.error('No tickers found in config');
+            }
+        });
+    }
+
+    bindStockSelectEvents() {
+        // 确保元素存在
+        if (!this.stockSelect) return;
+
+        // 监听选择变化
+        this.stockSelect.addEventListener('change', (event) => {
+            const selectedTicker = event.target.value;
+            if (selectedTicker) {
+                // 更新图表和相关数据
+                this.updateChartForTicker(selectedTicker);
+                
+                // 存储最后选择的股票
+                chrome.storage.sync.set({ lastSelectedTicker: selectedTicker });
+            }
+        });
+    }
+
+    async updateChartForTicker(ticker) {
+        try {
+            // 显示加载状态
+            this.showLoading();
+
+            // 获取开始和结束日期
+            const startDate = this.getStartDate();
+            const endDate = this.getEndDate();
+
+            // 获取股票数据
+            const data = await this.fetchStockData(ticker, startDate, endDate);
+
+            // 更新图表
+            if (data) {
+                this.updateChart(data);
+                this.updateStatistics(data);
+            }
+        } catch (error) {
+            console.error('Error updating chart:', error);
+            this.showError('更新图表失败');
+        } finally {
+            // 隐藏加载状态
+            this.hideLoading();
+        }
+    }
+
+    showLoading() {
+        // 添加加载提示
+        const loadingDiv = document.createElement('div');
+        loadingDiv.id = 'loading-indicator';
+        loadingDiv.textContent = '加载中...';
+        loadingDiv.style.cssText = `
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px 20px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            z-index: 1000;
+        `;
+        document.body.appendChild(loadingDiv);
+    }
+
+    hideLoading() {
+        // 移除加载提示
+        const loadingDiv = document.getElementById('loading-indicator');
+        if (loadingDiv) {
+            loadingDiv.remove();
+        }
+    }
+
+    showError(message) {
+        // 显示错误提示
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-message';
+        errorDiv.textContent = message;
+        errorDiv.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #ff4444;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 4px;
+            z-index: 1000;
+        `;
+        document.body.appendChild(errorDiv);
+
+        // 3秒后自动消失
+        setTimeout(() => {
+            errorDiv.remove();
+        }, 3000);
+    }
+
+    getStartDate() {
+        const startDateInput = document.getElementById('startDate');
+        return startDateInput ? new Date(startDateInput.value) : new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
+    }
+
+    getEndDate() {
+        const endDateInput = document.getElementById('endDate');
+        return endDateInput ? new Date(endDateInput.value) : new Date();
     }
 
     initializeElements() {

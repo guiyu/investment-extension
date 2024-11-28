@@ -1,208 +1,195 @@
+// 导入所需模块
+import ConfigManager from '../lib/config.js';
+import StorageManager from '../lib/storage.js';
 import YahooFinanceAPI from '../lib/yahoo-finance.js';
+import { utils } from '../lib/utils.js';
 
-// 默认配置
-const DEFAULT_CONFIG = {
-    tickers: ['SPY', 'QQQ', 'IWM', 'DIA', 'VTI'],
-    baseInvestment: 1000,
-    smaWindow: 200,
-    stdWindow: 30,
-    minWeight: 0.5,
-    maxWeight: 2
-};
+// Service Worker 状态
+let isInitialized = false;
 
-class BackgroundService {
-    constructor() {
-        this.setupAlarms();
-        this.setupListeners();
-        this.initializeState();
-    }
+// 初始化函数
+async function initialize() {
+    if (isInitialized) return;
 
-    async initializeState() {
-        // 初始化存储
-        const state = await chrome.storage.sync.get('config');
-        if (!state.config) {
-            await chrome.storage.sync.set({ config: DEFAULT_CONFIG });
-        }
-    }
-
-    setupAlarms() {
-        // 设置每日定投检查闹钟
-        chrome.alarms.create('dailyInvestmentCheck', {
-            periodInMinutes: 24 * 60  // 每24小时检查一次
-        });
-
-        // 设置市场开盘提醒闹钟
-        chrome.alarms.create('marketOpenReminder', {
-            periodInMinutes: 24 * 60,
-            when: this.getNextMarketOpenTime()
-        });
-    }
-
-    setupListeners() {
-        // 监听闹钟事件
-        chrome.alarms.onAlarm.addListener((alarm) => {
-            switch (alarm.name) {
-                case 'dailyInvestmentCheck':
-                    this.checkInvestmentSchedule();
-                    break;
-                case 'marketOpenReminder':
-                    this.sendMarketOpenReminder();
-                    break;
-            }
-        });
-
-        // 监听消息
-        chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-            this.handleMessage(request, sender, sendResponse);
-            return true;  // 保持消息通道开启
-        });
-    }
-
-    async handleMessage(request, sender, sendResponse) {
-        try {
-            switch (request.type) {
-                case 'getPriceData':
-                    const data = await this.fetchPriceData(request.symbol, request.startDate, request.endDate);
-                    sendResponse({ success: true, data });
-                    break;
-                    
-                case 'checkInvestment':
-                    const checkResult = await this.checkInvestmentOpportunity(request.symbol);
-                    sendResponse({ success: true, result: checkResult });
-                    break;
-                    
-                case 'updateConfig':
-                    await this.updateConfig(request.config);
-                    sendResponse({ success: true });
-                    break;
-                    
-                case 'getConfig':
-                    const config = await this.getConfig();
-                    sendResponse({ success: true, config });
-                    break;
-                    
-                default:
-                    sendResponse({ success: false, error: 'Unknown request type' });
-            }
-        } catch (error) {
-            console.error('Error handling message:', error);
-            sendResponse({ success: false, error: error.message });
-        }
-    }
-
-    async fetchPriceData(symbol, startDate, endDate) {
-        // 首先检查缓存
-        const cachedData = await YahooFinanceAPI.getCachedData(symbol);
-        if (cachedData) {
-            return cachedData;
-        }
-
-        // 获取新数据
-        const data = await YahooFinanceAPI.getHistoricalData(symbol, startDate, endDate);
-        // 缓存数据
-        await YahooFinanceAPI.cacheData(symbol, data);
-        return data;
-    }
-
-    async checkInvestmentSchedule() {
-        const config = await this.getConfig();
-        const today = new Date();
-
-        // 检查是否是第二个周三
-        if (this.isSecondWednesday(today)) {
-            // 获取所有股票的当前价格
-            for (const ticker of config.tickers) {
-                await this.checkInvestmentOpportunity(ticker);
-            }
-        }
-    }
-
-    async checkInvestmentOpportunity(symbol) {
-        try {
-            const currentPrice = await YahooFinanceAPI.getCurrentPrice(symbol);
-            const historyData = await this.fetchPriceData(
-                symbol,
-                new Date(Date.now() - 365 * 24 * 60 * 60 * 1000),
-                new Date()
-            );
-
-            // 计算技术指标
-            const technicalIndicators = YahooFinanceAPI.calculateTechnicalIndicators(historyData.adjustedPrices);
-
-            // 如果满足投资条件，发送通知
-            if (this.shouldInvest(currentPrice.price, technicalIndicators)) {
-                this.sendInvestmentNotification(symbol, currentPrice.price);
-            }
-
-            return {
-                price: currentPrice,
-                indicators: technicalIndicators,
-                shouldInvest: this.shouldInvest(currentPrice.price, technicalIndicators)
-            };
-        } catch (error) {
-            console.error(`Error checking investment opportunity for ${symbol}:`, error);
-            throw error;
-        }
-    }
-
-    shouldInvest(currentPrice, indicators) {
-        // 实现投资决策逻辑
-        const { sma, std } = indicators;
-        const lastSMA = sma[sma.length - 1];
-        const lastSTD = std[std.length - 1];
-
-        // 简单的投资逻辑示例
-        return currentPrice < lastSMA && lastSTD < lastSMA * 0.1;
-    }
-
-    async sendInvestmentNotification(symbol, price) {
-        chrome.notifications.create({
-            type: 'basic',
-            iconUrl: '/assets/icons/icon128.png',
-            title: '投资机会提醒',
-            message: `${symbol} 当前价格 $${price} 可能是一个好的投资时机。`
-        });
-    }
-
-    async sendMarketOpenReminder() {
-        chrome.notifications.create({
-            type: 'basic',
-            iconUrl: '/assets/icons/icon128.png',
-            title: '市场开盘提醒',
-            message: '美股市场即将开盘，请检查您的投资计划。'
-        });
-    }
-
-    getNextMarketOpenTime() {
-        // 计算下一个交易日开盘时间
-        const now = new Date();
-        const marketOpen = new Date(now);
-        marketOpen.setHours(9, 30, 0, 0);  // 美东时间9:30
-
-        if (now > marketOpen) {
-            marketOpen.setDate(marketOpen.getDate() + 1);
-        }
-
-        return marketOpen.getTime();
-    }
-
-    isSecondWednesday(date) {
-        const d = new Date(date);
-        return d.getDay() === 3 && // 是周三
-               Math.floor((d.getDate() - 1) / 7) === 1; // 是第二周
-    }
-
-    async getConfig() {
-        const result = await chrome.storage.sync.get('config');
-        return result.config || DEFAULT_CONFIG;
-    }
-
-    async updateConfig(newConfig) {
-        await chrome.storage.sync.set({ config: { ...DEFAULT_CONFIG, ...newConfig } });
+    try {
+        // 初始化配置
+        await ConfigManager.loadConfig();
+        
+        // 设置定时任务
+        setupAlarms();
+        
+        // 添加消息监听器
+        setupMessageListeners();
+        
+        isInitialized = true;
+        console.log('Service Worker initialized successfully');
+    } catch (error) {
+        console.error('Service Worker initialization failed:', error);
     }
 }
 
-// 初始化后台服务
-const backgroundService = new BackgroundService();
+// 设置定时任务
+function setupAlarms() {
+    // 设置每日检查闹钟
+    chrome.alarms.create('dailyCheck', {
+        periodInMinutes: 24 * 60 // 每24小时检查一次
+    });
 
-export default backgroundService;
+    // 设置市场开盘提醒
+    chrome.alarms.create('marketOpen', {
+        periodInMinutes: 24 * 60,
+        when: getNextMarketOpenTime()
+    });
+}
+
+// 消息监听器设置
+function setupMessageListeners() {
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        handleMessage(message, sender, sendResponse);
+        return true; // 保持消息通道打开
+    });
+}
+
+// 消息处理函数
+async function handleMessage(message, sender, sendResponse) {
+    try {
+        switch (message.type) {
+            case 'getPriceData':
+                const data = await YahooFinanceAPI.getHistoricalData(
+                    message.symbol,
+                    message.startDate,
+                    message.endDate
+                );
+                sendResponse({ success: true, data });
+                break;
+
+            case 'getAnalysis':
+                const analysis = await analyzeStock(message.symbol);
+                sendResponse({ success: true, data: analysis });
+                break;
+
+            case 'updateConfig':
+                await ConfigManager.updateConfig(message.config);
+                sendResponse({ success: true });
+                break;
+
+            default:
+                console.warn('Unknown message type:', message.type);
+                sendResponse({ success: false, error: 'Unknown message type' });
+        }
+    } catch (error) {
+        console.error('Error handling message:', error);
+        sendResponse({ success: false, error: error.message });
+    }
+}
+
+// 获取下一个市场开盘时间
+function getNextMarketOpenTime() {
+    const now = new Date();
+    const marketOpen = new Date(now);
+    marketOpen.setHours(9, 30, 0, 0); // 美东时间9:30
+
+    if (now > marketOpen) {
+        marketOpen.setDate(marketOpen.getDate() + 1);
+    }
+
+    return marketOpen.getTime();
+}
+
+// 分析股票数据
+async function analyzeStock(symbol) {
+    try {
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setFullYear(startDate.getFullYear() - 1);
+
+        const data = await YahooFinanceAPI.getHistoricalData(symbol, startDate, endDate);
+        return {
+            technicalIndicators: calculateTechnicalIndicators(data),
+            suggestion: generateInvestmentSuggestion(data),
+            marketTrends: analyzeMarketTrends(data)
+        };
+    } catch (error) {
+        console.error('Error analyzing stock:', error);
+        throw error;
+    }
+}
+
+// 计算技术指标
+function calculateTechnicalIndicators(data) {
+    const prices = data.adjustedPrices;
+    return {
+        sma200: utils.calculateMA(prices, 200).slice(-1)[0],
+        rsi: calculateRSI(prices),
+        macd: calculateMACD(prices)
+    };
+}
+
+// 生成投资建议
+function generateInvestmentSuggestion(data) {
+    // 实现投资建议逻辑
+    return {
+        recommendation: "根据技术分析建议",
+        position: 50 // 建议仓位
+    };
+}
+
+// 分析市场趋势
+function analyzeMarketTrends(data) {
+    // 实现市场趋势分析逻辑
+    return {
+        trend: "上升",
+        volatility: "中等"
+    };
+}
+
+// 计算RSI指标
+function calculateRSI(prices) {
+    // 实现RSI计算逻辑
+    return 50; // 示例返回值
+}
+
+// 计算MACD指标
+function calculateMACD(prices) {
+    // 实现MACD计算逻辑
+    return 0; // 示例返回值
+}
+
+// 监听安装事件
+chrome.runtime.onInstalled.addListener(async () => {
+    console.log('Extension installed');
+    await initialize();
+});
+
+// 监听启动事件
+chrome.runtime.onStartup.addListener(async () => {
+    console.log('Extension started');
+    await initialize();
+});
+
+// 监听报警事件
+chrome.alarms.onAlarm.addListener((alarm) => {
+    console.log('Alarm triggered:', alarm.name);
+    switch (alarm.name) {
+        case 'dailyCheck':
+            performDailyCheck();
+            break;
+        case 'marketOpen':
+            handleMarketOpen();
+            break;
+    }
+});
+
+// 每日检查任务
+async function performDailyCheck() {
+    const config = await ConfigManager.loadConfig();
+    // 实现每日检查逻辑
+}
+
+// 市场开盘处理
+async function handleMarketOpen() {
+    // 实现市场开盘处理逻辑
+}
+
+// 导出 Service Worker
+export default null;
