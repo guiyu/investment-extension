@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>Investment Portfolio Assistant</title>
     <link rel="stylesheet" href="popup.css">
+    <script src="../lib/chart.umd.js"></script>
 </head>
 <body>
     <div class="container">
@@ -28,9 +29,8 @@
             <div class="stock-section">
                 <div class="input-group">
                     <label for="stockSelect">选择股票:</label>
-                    <!-- 修改后的下拉菜单 -->
                     <select id="stockSelect" name="stockSelect">
-                        <!-- 这里会由 JavaScript 动态填充选项 -->
+                        <!-- 这里会由JavaScript动态填充选项 -->
                     </select>
                 </div>
                 <div class="input-group">
@@ -45,40 +45,10 @@
                 <div id="portfolioSummary"></div>
             </div>
 
-            <!-- 再平衡设置 -->
-            <div class="rebalance-section">
-                <div class="rebalance-header">
-                    <label>
-                        <input type="checkbox" id="enableRebalance">
-                        启用再平衡
-                    </label>
-                </div>
-                <div class="rebalance-options" id="rebalanceOptions">
-                    <div class="input-group">
-                        <label>再平衡周期:</label>
-                        <div class="radio-group">
-                            <label><input type="radio" name="period" value="MONTHLY">月度</label>
-                            <label><input type="radio" name="period" value="QUARTERLY">季度</label>
-                            <label><input type="radio" name="period" value="SEMIANNUAL">半年</label>
-                            <label><input type="radio" name="period" value="ANNUAL">年度</label>
-                        </div>
-                    </div>
-                    <div class="input-group">
-                        <label for="threshold">再平衡阈值(%):</label>
-                        <input type="number" id="threshold" min="0" max="100">
-                    </div>
-                    <div class="input-group">
-                        <label for="minTrade">最小交易金额($):</label>
-                        <input type="number" id="minTrade" min="0">
-                    </div>
-                </div>
-            </div>
-
             <!-- 操作按钮 -->
             <div class="action-buttons">
                 <button id="updateChart">更新图表</button>
-                <button id="estimateToday">当天定投估值</button>
-                <button id="viewHistory">查看历史记录</button>
+                <button id="estimateToday">今日估值</button>
             </div>
         </div>
 
@@ -91,11 +61,7 @@
         <div class="statistics" id="statisticsPanel">
         </div>
     </div>
-
-    <!-- 引入脚本 -->
-    <script src="../lib/chart.js"></script>
-    <script src="../lib/yahoo-finance.js"></script>
-    <script src="../lib/data-processing.js"></script>
-    <script src="popup.js"></script>
+    <!-- 引入我们的模块脚本 -->
+    <script type="module" src="popup.js"></script>
 </body>
 </html>

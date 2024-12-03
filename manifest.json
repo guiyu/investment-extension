@@ -16,6 +16,9 @@
         "service_worker": "background/background.js",
         "type": "module"
     },
+    "content_security_policy": {
+        "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+    },
     "action": {
         "default_popup": "popup/popup.html",
         "default_icon": {
@@ -33,6 +36,12 @@
         {
             "matches": ["https://finance.yahoo.com/*"],
             "js": ["content/content.js"]
+        }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": ["lib/*"],
+            "matches": ["<all_urls>"]
         }
     ],
     "default_locale": "zh"

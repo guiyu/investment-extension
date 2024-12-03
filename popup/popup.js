@@ -1,133 +1,218 @@
-import { Chart } from 'chart.js';
-import InvestmentCalculator from '../lib/data-processing.js';
+// 导入必要模块
+import { utils } from '../lib/utils.js';
+import YahooFinanceAPI from '../lib/yahoo-finance.js';
+import ConfigManager from '../lib/config.js';
+import StorageManager from '../lib/storage.js';
 
 class PopupUI {
     constructor() {
-        this.calculator = null;
+        this.initialize();
+        this.config = null;
         this.chart = null;
-        this.currentData = null;
-        
-        this.initializeElements();
-        this.setupEventListeners();
-        this.loadInitialConfig();
-        // 初始化股票选择器
-        this.initializeStockSelect();
-        // 绑定事件监听
-        this.bindStockSelectEvents();
     }
 
-    initializeStockSelect() {
-        // 获取股票选择下拉菜单元素
-        this.stockSelect = document.getElementById('stockSelect');
-        
-        // 确保元素存在
-        if (!this.stockSelect) {
-            console.error('Stock select element not found');
-            return;
-        }
-
-        // 从配置中加载股票列表
-        chrome.storage.sync.get('config', (result) => {
-            if (result.config && Array.isArray(result.config.tickers)) {
-                // 清空现有选项
-                this.stockSelect.innerHTML = '';
-                
-                // 添加默认选项
-                const defaultOption = document.createElement('option');
-                defaultOption.value = '';
-                defaultOption.textContent = '请选择股票';
-                this.stockSelect.appendChild(defaultOption);
-                
-                // 添加股票选项
-                result.config.tickers.forEach(ticker => {
-                    const option = document.createElement('option');
-                    option.value = ticker;
-                    option.textContent = ticker;
-                    this.stockSelect.appendChild(option);
-                });
-
-                // 设置默认选中第一个有效选项
-                if (result.config.tickers.length > 0) {
-                    this.stockSelect.value = result.config.tickers[0];
-                }
-            } else {
-                console.error('No tickers found in config');
-            }
-        });
-    }
-
-    bindStockSelectEvents() {
-        // 确保元素存在
-        if (!this.stockSelect) return;
-
-        // 监听选择变化
-        this.stockSelect.addEventListener('change', (event) => {
-            const selectedTicker = event.target.value;
-            if (selectedTicker) {
-                // 更新图表和相关数据
-                this.updateChartForTicker(selectedTicker);
-                
-                // 存储最后选择的股票
-                chrome.storage.sync.set({ lastSelectedTicker: selectedTicker });
-            }
-        });
-    }
-
-    async updateChartForTicker(ticker) {
+    async initialize() {
         try {
-            // 显示加载状态
-            this.showLoading();
-
-            // 获取开始和结束日期
-            const startDate = this.getStartDate();
-            const endDate = this.getEndDate();
-
-            // 获取股票数据
-            const data = await this.fetchStockData(ticker, startDate, endDate);
-
-            // 更新图表
-            if (data) {
-                this.updateChart(data);
-                this.updateStatistics(data);
+            // 检查 Chart 是否在全局范围内可用
+            if (typeof Chart === 'undefined') {
+                throw new Error('Chart.js not available');
             }
+            
+            await this.initializeConfig();
+            this.initializeElements();
+            this.setupEventListeners();
+            await this.initializeStockSelect();
+            this.updateDateInputs();
+        } catch (error) {
+            console.error('Initialization error:', error);
+            this.showError('初始化失败: ' + error.message);
+        }
+    }
+
+    async initializeConfig() {
+        try {
+            // 加载默认配置
+            const defaultConfig = {
+                tickers: ['SPY', 'QQQ', 'IWM', 'DIA', 'VTI'],
+                baseInvestment: 1000,
+                smaWindow: 200,
+                stdWindow: 30,
+                minWeight: 0.5,
+                maxWeight: 2
+            };
+
+            // 从存储中获取配置
+            const savedConfig = await chrome.storage.sync.get('config');
+            this.config = savedConfig.config || defaultConfig;
+
+            // 如果没有保存的配置，保存默认配置
+            if (!savedConfig.config) {
+                await chrome.storage.sync.set({ config: defaultConfig });
+            }
+
+            console.log('Configuration loaded:', this.config);
+        } catch (error) {
+            console.error('Error loading configuration:', error);
+            throw new Error('Failed to load configuration');
+        }
+    }
+
+    initializeElements() {
+        // 获取所有需要的DOM元素
+        this.stockSelect = document.getElementById('stockSelect');
+        this.baseInvestmentInput = document.getElementById('baseInvestment');
+        this.startDateInput = document.getElementById('startDate');
+        this.endDateInput = document.getElementById('endDate');
+        this.updateButton = document.getElementById('updateChart');
+        this.estimateButton = document.getElementById('estimateToday');
+        this.portfolioButton = document.getElementById('setPortfolio');
+        this.portfolioSummary = document.getElementById('portfolioSummary');
+        this.chartCanvas = document.getElementById('investmentChart');
+        this.statisticsPanel = document.getElementById('statisticsPanel');
+
+        // 验证所有必要的元素都存在
+        if (!this.stockSelect || !this.baseInvestmentInput || !this.chartCanvas) {
+            throw new Error('Required elements not found in the DOM');
+        }
+    }
+
+    setupEventListeners() {
+        // 绑定事件监听器
+        this.updateButton?.addEventListener('click', () => this.updateChart());
+        this.estimateButton?.addEventListener('click', () => this.estimateToday());
+        this.portfolioButton?.addEventListener('click', () => this.openPortfolioDialog());
+        this.stockSelect?.addEventListener('change', (e) => this.onStockSelectChange(e));
+
+        // 设置基础投资金额输入框的值
+        if (this.baseInvestmentInput && this.config) {
+            this.baseInvestmentInput.value = this.config.baseInvestment;
+        }
+    }
+
+    async initializeStockSelect() {
+        if (!this.stockSelect || !this.config?.tickers) return;
+
+        // 清空现有选项
+        this.stockSelect.innerHTML = '';
+            
+        // 添加选项
+        this.config.tickers.forEach(ticker => {
+            const option = document.createElement('option');
+            option.value = ticker;
+            option.textContent = ticker;
+            this.stockSelect.appendChild(option);
+        });
+
+        // 设置默认选中项
+        if (this.config.tickers.length > 0) {
+            this.stockSelect.value = this.config.tickers[0];
+            await this.updateChart();
+        }
+    }
+
+    updateDateInputs() {
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setFullYear(startDate.getFullYear() - 1);
+
+        if (this.startDateInput) {
+            this.startDateInput.value = utils.formatDate(startDate, 'YYYY-MM');
+        }
+        if (this.endDateInput) {
+            this.endDateInput.value = utils.formatDate(endDate, 'YYYY-MM');
+        }
+    }
+
+    async onStockSelectChange(event) {
+        const selectedTicker = event.target.value;
+        if (selectedTicker) {
+            await this.updateChart();
+        }
+    }
+
+    async updateChart() {
+        try {
+            this.showLoading();
+            const symbol = this.stockSelect.value;
+            const startDate = new Date(this.startDateInput.value);
+            const endDate = new Date(this.endDateInput.value);
+
+            const data = await YahooFinanceAPI.getHistoricalData(symbol, startDate, endDate);
+            this.updateChartDisplay(data);
         } catch (error) {
             console.error('Error updating chart:', error);
-            this.showError('更新图表失败');
+            this.showError('更新图表失败: ' + error.message);
         } finally {
-            // 隐藏加载状态
             this.hideLoading();
         }
     }
 
+    updateChartDisplay(data) {
+        if (this.chart) {
+            this.chart.destroy();
+        }
+
+        const ctx = this.chartCanvas.getContext('2d');
+        this.chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.dates.map(date => new Date(date).toLocaleDateString()),
+                datasets: [{
+                    label: '股票价格',
+                    data: data.prices,
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: '股票价格走势'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false
+                    }
+                }
+            }
+        });
+    }
+
     showLoading() {
-        // 添加加载提示
+        const existingLoader = document.getElementById('loadingIndicator');
+        if (existingLoader) return;
+
         const loadingDiv = document.createElement('div');
-        loadingDiv.id = 'loading-indicator';
+        loadingDiv.id = 'loadingIndicator';
         loadingDiv.textContent = '加载中...';
         loadingDiv.style.cssText = `
-            position: absolute;
+            position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
             background: rgba(255, 255, 255, 0.9);
-            padding: 10px 20px;
-            border-radius: 4px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             z-index: 1000;
         `;
         document.body.appendChild(loadingDiv);
     }
 
     hideLoading() {
-        // 移除加载提示
-        const loadingDiv = document.getElementById('loading-indicator');
+        const loadingDiv = document.getElementById('loadingIndicator');
         if (loadingDiv) {
             loadingDiv.remove();
         }
     }
 
     showError(message) {
-        // 显示错误提示
+        const existingError = document.querySelector('.error-message');
+        if (existingError) existingError.remove();
+
         const errorDiv = document.createElement('div');
         errorDiv.className = 'error-message';
         errorDiv.textContent = message;
@@ -140,448 +225,17 @@ class PopupUI {
             padding: 10px 20px;
             border-radius: 4px;
             z-index: 1000;
+            animation: fadeInOut 3s ease-in-out;
         `;
         document.body.appendChild(errorDiv);
 
-        // 3秒后自动消失
         setTimeout(() => {
             errorDiv.remove();
         }, 3000);
     }
-
-    getStartDate() {
-        const startDateInput = document.getElementById('startDate');
-        return startDateInput ? new Date(startDateInput.value) : new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
-    }
-
-    getEndDate() {
-        const endDateInput = document.getElementById('endDate');
-        return endDateInput ? new Date(endDateInput.value) : new Date();
-    }
-
-    initializeElements() {
-        // 获取DOM元素
-        this.startDateInput = document.getElementById('startDate');
-        this.endDateInput = document.getElementById('endDate');
-        this.stockSelect = document.getElementById('stockSelect');
-        this.baseInvestmentInput = document.getElementById('baseInvestment');
-        this.updateButton = document.getElementById('updateChart');
-        this.estimateButton = document.getElementById('estimateToday');
-        this.viewHistoryButton = document.getElementById('viewHistory');
-        this.enableRebalanceCheckbox = document.getElementById('enableRebalance');
-        this.rebalanceOptions = document.getElementById('rebalanceOptions');
-        this.portfolioButton = document.getElementById('setPortfolio');
-        this.portfolioSummary = document.getElementById('portfolioSummary');
-        this.statisticsPanel = document.getElementById('statisticsPanel');
-
-        // 初始化图表
-        const ctx = document.getElementById('investmentChart').getContext('2d');
-        this.initializeChart(ctx);
-    }
-
-    initializeChart(ctx) {
-        this.chart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [
-                    {
-                        label: '累计收益',
-                        data: [],
-                        borderColor: 'rgb(75, 192, 192)',
-                        tension: 0.1
-                    },
-                    {
-                        label: '基准收益',
-                        data: [],
-                        borderColor: 'rgb(255, 99, 132)',
-                        tension: 0.1
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: '投资收益对比'
-                    },
-                    tooltip: {
-                        mode: 'index',
-                        intersect: false
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: '收益 ($)'
-                        }
-                    },
-                    x: {
-                        title: {
-                            display: true,
-                            text: '日期'
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    setupEventListeners() {
-        this.updateButton.addEventListener('click', () => this.updateChart());
-        this.estimateButton.addEventListener('click', () => this.estimateToday());
-        this.viewHistoryButton.addEventListener('click', () => this.viewHistory());
-        this.portfolioButton.addEventListener('click', () => this.openPortfolioDialog());
-        this.enableRebalanceCheckbox.addEventListener('change', () => this.toggleRebalanceOptions());
-
-        // 设置日期范围的默认值
-        const today = new Date();
-        const lastYear = new Date();
-        lastYear.setFullYear(today.getFullYear() - 1);
-        
-        this.startDateInput.value = this.formatDate(lastYear);
-        this.endDateInput.value = this.formatDate(today);
-    }
-
-    async loadInitialConfig() {
-        try {
-            const response = await chrome.runtime.sendMessage({
-                type: 'getConfig'
-            });
-
-            if (response.success) {
-                const config = response.config;
-                this.populateStockSelect(config.tickers);
-                this.baseInvestmentInput.value = config.baseInvestment;
-                this.calculator = new InvestmentCalculator(config);
-            }
-        } catch (error) {
-            console.error('Error loading config:', error);
-            this.showError('配置加载失败');
-        }
-    }
-
-    async updateChart() {
-        try {
-            const symbol = this.stockSelect.value;
-            const startDate = new Date(this.startDateInput.value);
-            const endDate = new Date(this.endDateInput.value);
-
-            // 获取价格数据
-            const response = await chrome.runtime.sendMessage({
-                type: 'getPriceData',
-                symbol,
-                startDate,
-                endDate
-            });
-
-            if (response.success) {
-                this.currentData = response.data;
-                this.updateChartDisplay();
-                this.updateStatistics();
-            } else {
-                this.showError('数据获取失败');
-            }
-        } catch (error) {
-            console.error('Error updating chart:', error);
-            this.showError('图表更新失败');
-        }
-    }
-
-    updateChartDisplay() {
-        if (!this.currentData || !this.chart) return;
-
-        const dates = this.currentData.dates.map(d => this.formatDate(new Date(d)));
-        const returns = this.calculator.calculateReturns(
-            this.currentData.adjustedPrices,
-            this.currentData.dates
-        );
-
-        this.chart.data.labels = dates;
-        this.chart.data.datasets[0].data = returns.cumulativeReturn;
-        this.chart.data.datasets[1].data = returns.benchmarkReturn;
-        this.chart.update();
-    }
-
-    updateStatistics() {
-        if (!this.currentData) return;
-
-        const stats = this.calculator.calculateStatistics(this.currentData);
-        this.statisticsPanel.innerHTML = `
-            <h3>投资统计</h3>
-            <p>总投资金额: $${stats.totalInvestment.toFixed(2)}</p>
-            <p>当前市值: $${stats.currentValue.toFixed(2)}</p>
-            <p>总收益: $${stats.totalReturn.toFixed(2)}</p>
-            <p>收益率: ${stats.returnRate.toFixed(2)}%</p>
-            <p>年化收益率: ${stats.annualizedReturn.toFixed(2)}%</p>
-        `;
-    }
-
-    async estimateToday() {
-        try {
-            const symbol = this.stockSelect.value;
-            const response = await chrome.runtime.sendMessage({
-                type: 'checkInvestment',
-                symbol
-            });
-
-            if (response.success) {
-                this.showEstimationResult(response.result);
-            } else {
-                this.showError('估值获取失败');
-            }
-        } catch (error) {
-            console.error('Error estimating today:', error);
-            this.showError('估值计算失败');
-        }
-    }
-
-    showEstimationResult(result) {
-        const dialog = document.createElement('div');
-        dialog.className = 'estimation-dialog';
-        dialog.innerHTML = `
-            <h3>今日定投估值</h3>
-            <p>当前价格: $${result.price.price.toFixed(2)}</p>
-            <p>建议: ${result.shouldInvest ? '适合投资' : '建议观望'}
-            <p>移动平均: $${result.indicators.sma[result.indicators.sma.length - 1].toFixed(2)}</p>
-            <p>波动率: ${(result.indicators.std[result.indicators.std.length - 1] * 100).toFixed(2)}%</p>
-        `;
-        document.body.appendChild(dialog);
-
-        // 3秒后自动关闭
-        setTimeout(() => {
-            dialog.remove();
-        }, 3000);
-    }
-
-    async viewHistory() {
-        try {
-            // 创建历史记录窗口
-            const historyWindow = window.open('', 'Investment History', 'width=800,height=600');
-            historyWindow.document.write(`
-                <html>
-                <head>
-                    <title>投资历史记录</title>
-                    <style>
-                        body { font-family: Arial, sans-serif; padding: 20px; }
-                        table { width: 100%; border-collapse: collapse; }
-                        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
-                        th { background-color: #f5f5f5; }
-                    </style>
-                </head>
-                <body>
-                    <h2>投资历史记录</h2>
-                    <div id="historyContent"></div>
-                </body>
-                </html>
-            `);
-
-            // 获取历史数据
-            const response = await chrome.runtime.sendMessage({
-                type: 'getInvestmentHistory'
-            });
-
-            if (response.success) {
-                this.displayHistory(response.history, historyWindow);
-            } else {
-                historyWindow.document.getElementById('historyContent').innerHTML = '获取历史记录失败';
-            }
-        } catch (error) {
-            console.error('Error viewing history:', error);
-            this.showError('历史记录加载失败');
-        }
-    }
-
-    displayHistory(history, window) {
-        const content = window.document.getElementById('historyContent');
-        if (!history || history.length === 0) {
-            content.innerHTML = '暂无投资记录';
-            return;
-        }
-
-        let html = `
-            <table>
-                <thead>
-                    <tr>
-                        <th>日期</th>
-                        <th>股票</th>
-                        <th>价格</th>
-                        <th>数量</th>
-                        <th>投资金额</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
-
-        history.forEach(record => {
-            html += `
-                <tr>
-                    <td>${this.formatDate(new Date(record.date))}</td>
-                    <td>${record.symbol}</td>
-                    <td>$${record.price.toFixed(2)}</td>
-                    <td>${record.shares}</td>
-                    <td>$${(record.price * record.shares).toFixed(2)}</td>
-                </tr>
-            `;
-        });
-
-        html += '</tbody></table>';
-        content.innerHTML = html;
-    }
-
-    async openPortfolioDialog() {
-        try {
-            const dialog = document.createElement('div');
-            dialog.className = 'portfolio-dialog';
-            dialog.innerHTML = `
-                <div class="portfolio-dialog-content">
-                    <h3>设置资产组合</h3>
-                    <div class="portfolio-inputs"></div>
-                    <div class="portfolio-buttons">
-                        <button id="savePortfolio">保存</button>
-                        <button id="cancelPortfolio">取消</button>
-                    </div>
-                </div>
-            `;
-
-            // 获取当前配置
-            const response = await chrome.runtime.sendMessage({
-                type: 'getConfig'
-            });
-
-            if (response.success) {
-                const config = response.config;
-                const inputsContainer = dialog.querySelector('.portfolio-inputs');
-                
-                config.tickers.forEach(ticker => {
-                    const input = document.createElement('div');
-                    input.className = 'portfolio-input-group';
-                    input.innerHTML = `
-                        <label>${ticker}</label>
-                        <input type="number" min="0" max="100" value="0" class="portfolio-weight" 
-                               data-ticker="${ticker}">
-                        <span>%</span>
-                    `;
-                    inputsContainer.appendChild(input);
-                });
-
-                document.body.appendChild(dialog);
-
-                // 绑定事件
-                dialog.querySelector('#savePortfolio').addEventListener('click', () => {
-                    this.savePortfolio(dialog);
-                });
-
-                dialog.querySelector('#cancelPortfolio').addEventListener('click', () => {
-                    dialog.remove();
-                });
-            }
-        } catch (error) {
-            console.error('Error opening portfolio dialog:', error);
-            this.showError('打开资产组合设置失败');
-        }
-    }
-
-    async savePortfolio(dialog) {
-        try {
-            const weights = {};
-            dialog.querySelectorAll('.portfolio-weight').forEach(input => {
-                weights[input.dataset.ticker] = parseFloat(input.value) / 100;
-            });
-
-            // 验证权重总和是否为100%
-            const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0);
-            if (Math.abs(totalWeight - 1) > 0.001) {
-                this.showError('资产配置总和必须为100%');
-                return;
-            }
-
-            // 保存配置
-            await chrome.runtime.sendMessage({
-                type: 'updateConfig',
-                config: { portfolioWeights: weights }
-            });
-
-            this.updatePortfolioSummary(weights);
-            dialog.remove();
-        } catch (error) {
-            console.error('Error saving portfolio:', error);
-            this.showError('保存资产组合失败');
-        }
-    }
-
-    updatePortfolioSummary(weights) {
-        const summary = Object.entries(weights)
-            .filter(([_, weight]) => weight > 0)
-            .map(([ticker, weight]) => `${ticker}: ${(weight * 100).toFixed(1)}%`)
-            .join(', ');
-
-        this.portfolioSummary.textContent = summary || '未设置资产组合';
-    }
-
-    toggleRebalanceOptions() {
-        const enabled = this.enableRebalanceCheckbox.checked;
-        this.rebalanceOptions.style.display = enabled ? 'block' : 'none';
-        
-        if (enabled) {
-            this.initializeRebalanceOptions();
-        }
-    }
-
-    async initializeRebalanceOptions() {
-        try {
-            const response = await chrome.runtime.sendMessage({
-                type: 'getConfig'
-            });
-
-            if (response.success) {
-                const config = response.config;
-                // 设置再平衡选项的默认值
-                document.getElementById('threshold').value = (config.rebalanceThreshold || 5).toString();
-                document.getElementById('minTrade').value = (config.minTradeAmount || 1000).toString();
-                
-                // 设置再平衡周期
-                const periodRadios = document.getElementsByName('period');
-                for (const radio of periodRadios) {
-                    if (radio.value === (config.rebalancePeriod || 'QUARTERLY')) {
-                        radio.checked = true;
-                        break;
-                    }
-                }
-            }
-        } catch (error) {
-            console.error('Error initializing rebalance options:', error);
-            this.showError('初始化再平衡选项失败');
-        }
-    }
-
-    formatDate(date) {
-        return date.toISOString().split('T')[0];
-    }
-
-    showError(message) {
-        const toast = document.createElement('div');
-        toast.className = 'error-toast';
-        toast.textContent = message;
-        document.body.appendChild(toast);
-
-        setTimeout(() => {
-            toast.remove();
-        }, 3000);
-    }
-
-    populateStockSelect(tickers) {
-        this.stockSelect.innerHTML = tickers.map(ticker => 
-            `<option value="${ticker}">${ticker}</option>`
-        ).join('');
-    }
 }
 
-// 初始化弹出窗口UI
+// 初始化应用
 document.addEventListener('DOMContentLoaded', () => {
     new PopupUI();
 });
