@@ -136,14 +136,175 @@ class PopupUI {
             const symbol = this.stockSelect.value;
             const startDate = new Date(this.startDateInput.value);
             const endDate = new Date(this.endDateInput.value);
+            
+            console.log('Updating chart with dates:', {
+                startDate: startDate.toISOString(),
+                endDate: endDate.toISOString()
+            });
 
             const data = await YahooFinanceAPI.getHistoricalData(symbol, startDate, endDate);
             this.updateChartDisplay(data);
+
+            // 计算并显示定投统计信息
+            await this.calculateAndDisplayInvestmentStats(data);
+
         } catch (error) {
             console.error('Error updating chart:', error);
             this.showError('更新图表失败: ' + error.message);
         } finally {
             this.hideLoading();
+        }
+    }
+
+    async calculateAndDisplayInvestmentStats(data) {
+        if (!this.statisticsPanel || !data.prices || !data.dates) return;
+
+        const baseInvestment = Number(this.baseInvestmentInput?.value) || 1000;
+        let totalInvestment = 0;
+        let totalShares = 0;
+        const monthlyStats = [];
+        
+        // 按月计算定投统计
+        for (let i = 0; i < data.dates.length; i++) {
+            const currentDate = data.dates[i];
+            const price = data.prices[i];
+            
+            // 确认是否是每月的定投日（默认每月第二个周三）
+            if (this.isInvestmentDay(currentDate)) {
+                const weight = this.calculateInvestmentWeight(data.prices, i);
+                const investment = baseInvestment * weight;
+                const shares = investment / price;
+                
+                totalInvestment += investment;
+                totalShares += shares;
+
+                monthlyStats.push({
+                    date: currentDate,
+                    price: price,
+                    investment: investment,
+                    shares: shares,
+                    weight: weight
+                });
+            }
+        }
+
+        // 计算当前市值和收益率
+        const currentPrice = data.prices[data.prices.length - 1];
+        const portfolioValue = totalShares * currentPrice;
+        const totalReturn = portfolioValue - totalInvestment;
+        const returnRate = (totalReturn / totalInvestment) * 100;
+
+        // 更新统计面板显示
+        this.statisticsPanel.innerHTML = `
+            <div class="stats-container">
+                <h3>定投统计概要</h3>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-label">总投资额</div>
+                        <div class="stat-value">$${totalInvestment.toFixed(2)}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">当前市值</div>
+                        <div class="stat-value">$${portfolioValue.toFixed(2)}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">总收益</div>
+                        <div class="stat-value ${totalReturn >= 0 ? 'positive' : 'negative'}">
+                            $${totalReturn.toFixed(2)} (${returnRate.toFixed(2)}%)
+                        </div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">累计份额</div>
+                        <div class="stat-value">${totalShares.toFixed(4)}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">近期买入价</div>
+                        <div class="stat-value">$${currentPrice.toFixed(2)}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">定投次数</div>
+                        <div class="stat-value">${monthlyStats.length}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // 添加样式
+        this.addStatisticsStyles();
+    }
+
+    isInvestmentDay(date) {
+        // 判断是否为每月第二个周三
+        const d = new Date(date);
+        const month = d.getMonth();
+        let count = 0;
+        let day = 1;
+        
+        while (day <= d.getDate()) {
+            const tempDate = new Date(d.getFullYear(), month, day);
+            if (tempDate.getDay() === 3) { // 3 代表周三
+                count++;
+                if (count === 2) {
+                    return day === d.getDate();
+                }
+            }
+            day++;
+        }
+        return false;
+    }
+
+    calculateInvestmentWeight(prices, currentIndex) {
+        // 简单实现：基于价格相对于过去30日均价的偏离度计算权重
+        const lookback = Math.min(30, currentIndex);
+        if (lookback < 5) return 1; // 数据不足时使用基础权重
+        
+        const recentPrices = prices.slice(currentIndex - lookback, currentIndex + 1);
+        const avg = recentPrices.reduce((sum, price) => sum + price, 0) / recentPrices.length;
+        const currentPrice = prices[currentIndex];
+        
+        // 价格低于均价时增加权重，高于均价时减少权重
+        const ratio = avg / currentPrice;
+        return Math.max(0.5, Math.min(2, ratio));
+    }
+
+    addStatisticsStyles() {
+        // 检查是否已添加样式
+        if (!document.getElementById('stats-styles')) {
+            const style = document.createElement('style');
+            style.id = 'stats-styles';
+            style.textContent = `
+                .stats-container {
+                    padding: 15px;
+                    background: #fff;
+                    border-radius: 8px;
+                    margin-top: 20px;
+                }
+                .stats-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                    gap: 15px;
+                    margin-top: 10px;
+                }
+                .stat-item {
+                    background: #f8f9fa;
+                    padding: 12px;
+                    border-radius: 6px;
+                    border: 1px solid #e9ecef;
+                }
+                .stat-label {
+                    color: #6c757d;
+                    font-size: 14px;
+                    margin-bottom: 4px;
+                }
+                .stat-value {
+                    font-size: 16px;
+                    font-weight: 500;
+                    color: #212529;
+                }
+                .positive { color: #28a745; }
+                .negative { color: #dc3545; }
+            `;
+            document.head.appendChild(style);
         }
     }
 
